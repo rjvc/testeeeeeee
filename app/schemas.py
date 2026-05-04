@@ -27,6 +27,27 @@ class PedidoCriar(BaseModel):
     total: float = Field(ge=0, description="Valor total do pedido")
 
 
+class PedidoEditar(BaseModel):
+    """Schema para edicao parcial de um pedido existente."""
+    cliente_nome: str | None = Field(
+        None,
+        min_length=2,
+        max_length=200,
+        description="Novo nome do cliente (opcional)",
+    )
+    items: list[ItemPedido] | None = Field(
+        None,
+        min_length=1,
+        max_length=50,
+        description="Nova lista de items (opcional)",
+    )
+    total: float | None = Field(
+        None,
+        ge=0,
+        description="Novo valor total (opcional)",
+    )
+
+
 class PedidoActualizarStatus(BaseModel):
     """Schema para actualizacao do status de um pedido."""
     status: str = Field(

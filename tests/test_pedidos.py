@@ -316,3 +316,178 @@ def test_raiz(cliente):
     dados = resposta.json()
     assert dados["status"] == "operacional"
     assert dados["api"] == "Yfood - Gestao de Pedidos"
+
+
+# ---------------------------------------------------------------
+# Testes: Editar pedido (PATCH /pedidos/{id})
+# ---------------------------------------------------------------
+
+def _criar_pedido_base(cliente):
+    """Helper para criar um pedido base para testes de edicao."""
+    cliente.post(
+        "/pedidos/",
+        json={
+            "cliente_nome": "Maria",
+            "items": [{"nome": "Sopa", "quantidade": 1, "preco_unitario": 500.0}],
+            "total": 500.0,
+        },
+    )
+
+
+def test_editar_pedido_todos_campos(cliente):
+    """Editar cliente_nome, items e total em simultaneo → 200."""
+    _criar_pedido_base(cliente)
+
+    resposta = cliente.patch(
+        "/pedidos/1",
+        json={
+            "cliente_nome": "Maria Silva",
+            "items": [{"nome": "Muamba", "quantidade": 2, "preco_unitario": 2500.0}],
+            "total": 5000.0,
+        },
+    )
+
+    assert resposta.status_code == 200
+    dados = resposta.json()
+    assert dados["cliente_nome"] == "Maria Silva"
+    assert dados["total"] == 5000.0
+    import json as _json
+    items = _json.loads(dados["items"])
+    assert items[0]["nome"] == "Muamba"
+
+
+def test_editar_pedido_apenas_nome(cliente):
+    """Editar apenas cliente_nome → 200, outros campos inalterados."""
+    _criar_pedido_base(cliente)
+
+    resposta = cliente.patch("/pedidos/1", json={"cliente_nome": "Maria Silva"})
+
+    assert resposta.status_code == 200
+    dados = resposta.json()
+    assert dados["cliente_nome"] == "Maria Silva"
+    assert dados["total"] == 500.0
+
+
+def test_editar_pedido_apenas_items(cliente):
+    """Editar apenas items → 200, total e nome inalterados."""
+    _criar_pedido_base(cliente)
+
+    resposta = cliente.patch(
+        "/pedidos/1",
+        json={
+            "items": [{"nome": "Muamba", "quantidade": 2, "preco_unitario": 2500.0}]
+        },
+    )
+
+    assert resposta.status_code == 200
+    dados = resposta.json()
+    assert dados["cliente_nome"] == "Maria"
+    import json as _json
+    items = _json.loads(dados["items"])
+    assert items[0]["nome"] == "Muamba"
+
+
+def test_editar_pedido_apenas_total(cliente):
+    """Editar apenas total → 200, items e nome inalterados."""
+    _criar_pedido_base(cliente)
+
+    resposta = cliente.patch("/pedidos/1", json={"total": 999.99})
+
+    assert resposta.status_code == 200
+    dados = resposta.json()
+    assert dados["cliente_nome"] == "Maria"
+    assert dados["total"] == 999.99
+
+
+def test_editar_pedido_sem_campos(cliente):
+    """Body vazio {} → 200, pedido inalterado."""
+    _criar_pedido_base(cliente)
+
+    resposta = cliente.patch("/pedidos/1", json={})
+
+    assert resposta.status_code == 200
+    dados = resposta.json()
+    assert dados["cliente_nome"] == "Maria"
+    assert dados["total"] == 500.0
+
+
+def test_editar_pedido_inexistente(cliente):
+    """PATCH /pedidos/999 → 404."""
+    resposta = cliente.patch(
+        "/pedidos/999",
+        json={"cliente_nome": "Novo Nome"},
+    )
+
+    assert resposta.status_code == 404
+
+
+def test_editar_pedido_cancelado(cliente):
+    """Pedido com status cancelado + tentativa de edicao → 400."""
+    _criar_pedido_base(cliente)
+    cliente.patch("/pedidos/1/status", json={"status": "cancelado"})
+
+    resposta = cliente.patch(
+        "/pedidos/1",
+        json={"cliente_nome": "Novo Nome"},
+    )
+
+    assert resposta.status_code == 400
+    detail = resposta.json()["detail"].lower()
+    assert "finalizado" in detail or "cancelado" in detail
+
+
+def test_editar_pedido_entregue(cliente):
+    """Pedido com status entregue + tentativa de edicao → 400."""
+    _criar_pedido_base(cliente)
+    cliente.patch("/pedidos/1/status", json={"status": "em_preparacao"})
+    cliente.patch("/pedidos/1/status", json={"status": "pronto"})
+    cliente.patch("/pedidos/1/status", json={"status": "entregue"})
+
+    resposta = cliente.patch(
+        "/pedidos/1",
+        json={"cliente_nome": "Novo Nome"},
+    )
+
+    assert resposta.status_code == 400
+    detail = resposta.json()["detail"].lower()
+    assert "finalizado" in detail or "entregue" in detail
+
+
+def test_editar_pedido_nome_curto(cliente):
+    """cliente_nome com 1 char → 422."""
+    _criar_pedido_base(cliente)
+
+    resposta = cliente.patch("/pedidos/1", json={"cliente_nome": "J"})
+
+    assert resposta.status_code == 422
+
+
+def test_editar_pedido_items_vazio(cliente):
+    """items = [] → 422."""
+    _criar_pedido_base(cliente)
+
+    resposta = cliente.patch("/pedidos/1", json={"items": []})
+
+    assert resposta.status_code == 422
+
+
+def test_editar_pedido_total_negativo(cliente):
+    """total < 0 → 422."""
+    _criar_pedido_base(cliente)
+
+    resposta = cliente.patch("/pedidos/1", json={"total": -1})
+
+    assert resposta.status_code == 422
+
+
+def test_editar_pedido_items_excesso(cliente):
+    """items com 51+ elementos → 422."""
+    _criar_pedido_base(cliente)
+
+    items_excesso = [
+        {"nome": f"Item{i}", "quantidade": 1, "preco_unitario": 100.0}
+        for i in range(51)
+    ]
+    resposta = cliente.patch("/pedidos/1", json={"items": items_excesso})
+
+    assert resposta.status_code == 422

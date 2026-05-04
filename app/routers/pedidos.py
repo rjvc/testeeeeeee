@@ -11,6 +11,7 @@ from ..models import Pedido, StatusPedido
 from ..schemas import (
     PedidoCriar,
     PedidoActualizarStatus,
+    PedidoEditar,
     PedidoResposta,
     PedidoLista,
 )
@@ -139,6 +140,46 @@ def actualizar_status(
         )
 
     pedido.status = novo_status
+    db.commit()
+    db.refresh(pedido)
+
+    return pedido
+
+
+@router.patch(
+    "/{pedido_id}",
+    response_model=PedidoResposta,
+    summary="Editar um pedido existente",
+    description="Edita os dados de um pedido existente (campos opcionais, PATCH parcial).",
+)
+def actualizar_pedido(
+    pedido_id: int,
+    pedido_in: PedidoEditar,
+    db: Session = Depends(get_db),
+):
+    pedido = db.query(Pedido).filter(Pedido.id == pedido_id).first()
+
+    if pedido is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Pedido com id {pedido_id} nao encontrado.",
+        )
+
+    if pedido.status in (StatusPedido.CANCELADO, StatusPedido.ENTREGUE):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pedido finalizado nao pode ser editado.",
+        )
+
+    if pedido_in.cliente_nome is not None:
+        pedido.cliente_nome = pedido_in.cliente_nome.strip()
+    if pedido_in.items is not None:
+        pedido.items = json.dumps(
+            [i.model_dump() for i in pedido_in.items], ensure_ascii=False
+        )
+    if pedido_in.total is not None:
+        pedido.total = pedido_in.total
+
     db.commit()
     db.refresh(pedido)
 
